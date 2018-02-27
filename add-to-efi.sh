@@ -25,24 +25,30 @@
 
 set -e
 
+if (which tput >/dev/null 2>&1) ; then
+    TPUT="tput"
+else
+    TPUT="true"
+fi
+
 ate_print() {
-    echo " $(tput setaf 2)[EFI]$(tput sgr0) $*"
+    echo " $($TPUT setaf 2)[EFI]$($TPUT sgr0) $*"
 }
 
 ate_error() {
-    echo " $(tput setaf 1)[EFI]$(tput sgr0) $*"
+    echo " $($TPUT setaf 1)[EFI]$($TPUT sgr0) $*"
     exit 1
 }
 
 ate_debug() {
     if [ "$VERBOSE" -gt "0" ] ; then
-        echo " $(tput setaf 3)[EFI]$(tput sgr0) $*"
+        echo " $($TPUT setaf 3)[EFI]$($TPUT sgr0) $*"
     fi
 }
 
 ate_exec() {
     if [ "$VERBOSE" -gt "0" ] || [ "$DRY_RUN" -gt "0" ] ; then
-        echo " $(tput setaf 5)[EFI]$(tput sgr0) $*"
+        echo " $($TPUT setaf 5)[EFI]$($TPUT sgr0) $*"
     fi
     if [ "$DRY_RUN" = "0" ] && [ "x$DUMPTOFILE" = "x" ] ; then
         eval "$*"
