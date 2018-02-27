@@ -44,8 +44,11 @@ ate_exec() {
     if [ "$VERBOSE" -gt "0" ] || [ "$DRY_RUN" -gt "0" ] ; then
         echo " $(tput setaf 5)[EFI]$(tput sgr0) $*"
     fi
-    if [ "$DRY_RUN" = "0" ] ; then
+    if [ "$DRY_RUN" = "0" ] && [ "x$DUMPTOFILE" = "x" ] ; then
         eval "$*"
+    fi
+    if [ "x$DUMPTOFILE" != "x" ] && [ -w $DUMPTOFILE ] ; then
+        echo "$*" >> $DUMPTOFILE
     fi
 }
 
@@ -58,6 +61,7 @@ print_help() {
     echo "-n <name>          Set OS name."
     echo "-k <kernel-param>  Set additional kernel parameters."
     echo "-m <kernel-param>  Set additional kernel parameters for minimal boot options."
+    echo "-f <file-name>     Dump commands into executable file."
     echo "-d                 Dry run."
     echo "-v                 Verbose output."
     echo "-h                 Display help."
@@ -67,9 +71,10 @@ print_help() {
 TIMEOUT=3
 DRY_RUN='0'
 VERBOSE='0'
+DUMPTOFILE=''
 
 # Option parsing
-while getopts "r:e:p:t:n:k:m:dvh" opt; do
+while getopts "r:e:p:t:n:k:m:f:dvh" opt; do
     case $opt in
         r)
             if [ -b $OPTARG ] ; then
@@ -114,6 +119,12 @@ while getopts "r:e:p:t:n:k:m:dvh" opt; do
         m)
             KPARAM_MIN=$OPTARG
             ate_debug "Kernel parameter for minimal boot: $KPARAM_MIN"
+            ;;
+        f)
+            DUMPTOFILE=$OPTARG
+            ate_debug "Dumping commands to executable file"
+            echo "#!/bin/sh" > $DUMPTOFILE
+            chmod 755 $DUMPTOFILE
             ;;
         d)
             DRY_RUN='1'
@@ -223,7 +234,9 @@ entry() {
 
 # Remove all boot entries starting with our name
 ate_print "Removing old boot entries..."
-ate_exec "efibootmgr | grep \"$NAME\" | sed 's/^Boot\([0-9A-F]*\).*/\1/g' | xargs -n 1 -I{} efibootmgr --quiet --bootnum {} --delete-bootnum"
+for bootnum in `efibootmgr | grep "$NAME" | sed 's/^Boot\([0-9A-F]*\).*/\1/g'`; do
+    ate_exec "efibootmgr --quiet --bootnum $bootnum --delete-bootnum"
+done
 
 # Look for kernels on ESP
 KERNELS=`find $EFIROOT -name "vmlinu[xz]-*" | sort -r`
