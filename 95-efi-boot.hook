@@ -1,0 +1,16 @@
+[Trigger]
+Type = File
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Target = boot/vmlinu[xz]-*
+Target = boot/*.img
+Target = usr/lib/initcpio/*
+
+[Action]
+Description = Updating EFI boot entries...
+Depends = efibootmgr
+Depends = util-linux
+Depends = glibc
+When = PostTransaction
+Exec = /usr/local/bin/add-to-efi.sh -k rw -m ro
