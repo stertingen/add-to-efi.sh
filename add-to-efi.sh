@@ -25,9 +25,45 @@
 
 set -e
 
-OUTPREFIX=" $(tput setaf 6)[EFI]$(tput sgr0) "
-WRNPREFIX=" $(tput setaf 3)[EFI]$(tput sgr0) "
-ERRPREFIX=" $(tput setaf 1)[EFI]$(tput sgr0) "
+ate_print() {
+    echo " $(tput setaf 6)[EFI]$(tput sgr0) $*"
+}
+
+ate_warn() {
+    echo " $(tput setaf 3)[EFI]$(tput sgr0) $*"
+}
+
+ate_error() {
+    echo " $(tput setaf 1)[EFI]$(tput sgr0) $*"
+    exit 1
+}
+
+ate_debug() {
+    if [ "$VERBOSE" -gt "0" ] ; then
+        echo " $(tput setaf 2)[EFI]$(tput sgr0) $*"
+    fi
+}
+
+ate_exec() {
+    if [ "$VERBOSE" -gt "0" ] || [ "$DRY_RUN" -gt "0" ] ; then
+        echo " $(tput setaf 5)[EFI]$(tput sgr0) $*"
+    fi
+    eval "$*"
+}
+
+print_help() {
+    echo "Usage: $0 [-r <partition>] [-e <partition>] [-p (UUID|PARTUUID|LABEL|PARTLABEL)] [-t <timeout>] [-k <kernel-param>] [-m <kernel-param>] [-d] [-h]"
+    echo "-r <partition>     Set root partition."
+    echo "-e <partition>     Set ESP partition."
+    echo "-p <identifier>    Set identifier type, e.g. PARTUUID. Defaults to device name if unset."
+    echo "-t <timeout>       Set timeout. May be useless on some systems."
+    echo "-n <name>          Set OS name."
+    echo "-k <kernel-param>  Set additional kernel parameters."
+    echo "-m <kernel-param>  Set additional kernel parameters for minimal boot options."
+    echo "-d                 Dry run."
+    echo "-v                 Verbose output."
+    echo "-h                 Display help."
+}
 
 # Default options
 TIMEOUT=3
@@ -39,148 +75,140 @@ while getopts "r:e:p:t:n:k:m:dvh" opt; do
     case $opt in
         r)
             if [ -b $OPTARG ] ; then
-                ROOTDEV=$OPTARG
+                ROOT_DEV=$OPTARG
+                ate_debug "Set root partition to $ROOT_DEV"
             else
-                echo $ERRPREFIX Invalid root partition: $OPTARG
-                exit 1
+                ate_error "Invalid root partition: $OPTARG"
             fi
             ;;
         e)
             if [ -b $OPTARG ] ; then
                 ESP=$OPTARG
+                ate_debug "Set EFI partition to $ESP"
             else
-                echo $ERRPREFIX Invalid EFI partition: $OPTARG
-                exit 1
+                ate_error "Invalid EFI partition: $OPTARG"
             fi
             ;;
         p)
             if (echo "UUID PARTUUID LABEL PARTLABEL" | grep -wq "$OPTARG") ; then
                 ID_TYPE=$OPTARG
+                ate_debug "Using ID type $ID_TYPE"
             else
-                echo $ERRPREFIX Unknown ID type: $OPTARG
-                exit 1
+                ate_error "Unknown ID type: $OPTARG"
             fi
             ;;
         t)
             if (echo $OPTARG | grep -q "[0-9]\+") ; then
                 TIMEOUT=$OPTARG
+                ate_debug "Timeout set to $TIMEOUT"
             else
-                echo $ERRPREFIX Invalid timeout: $OPTARG
-                exit 1
+                ate_error "Invalid timeout: $OPTARG"
             fi
             ;;
-        n) NAME=$OPTARG ;;
-        k) KPARAM=$OPTARG ;;
-        m) KPARAM_MIN=$OPTARG ;;
-        d) DRY_RUN='1' ;;
-        v) VERBOSE='1' ;;
-        h|\?)
-            echo "Usage: $0 [-r <partition>] [-e <partition>] [-p (UUID|PARTUUID|LABEL|PARTLABEL)] [-t <timeout>] [-k <kernel-param>] [-m <kernel-param>] [-d] [-h]"
-            echo "-r <partition>     Set root partition."
-            echo "-e <partition>     Set ESP partition."
-            echo "-p <identifier>    Set identifier type, e.g. PARTUUID. Defaults to device name if unset."
-            echo "-t <timeout>       Set timeout. May be useless on some systems."
-            echo "-n <name>          Set OS name."
-            echo "-k <kernel-param>  Set additional kernel parameters."
-            echo "-m <kernel-param>  Set additional kernel parameters for minimal boot options."
-            echo "-d                 Dry run."
-            echo "-v                 Verbose output."
-            echo "-h                 Display help."
+        n)
+            NAME=$OPTARG
+            ate_debug "Name set to $NAME"
+            ;;
+        k)
+            KPARAM=$OPTARG
+            ate_debug "Default kernel parameter: $KPARAM"
+            ;;
+        m)
+            KPARAM_MIN=$OPTARG
+            ate_debug "Kernel parameter for minimal boot: $KPARAM_MIN"
+            ;;
+        d)
+            DRY_RUN='1'
+            ate_debug "Dry run!"
+            ;;
+        v)
+            VERBOSE='1'
+            ate_debug "Verbose mode!"
+            ;;
+        h)
+            print_help
             exit 0
+            ;;
+        \?)
+            print_help
+            exit 1
             ;;
     esac
 done
-
-if [ "$DRY_RUN" = "1" ] ; then
-    VERBOSE="1"
-fi
 
 # Get name of OS, if unset
 if [ "x$NAME" = "x" ] ; then
     if [ -f /etc/os-release ]; then
         source /etc/os-release
+        ate_debug "Read name from /etc/os-release: $NAME"
     else
         NAME=$(uname -o)
+        ate_debug "Read name from 'uname -o': $NAME"
     fi
 fi
 
 # Find root file system
-if [ "x$ROOTDEV" = "x" ] ; then
-    if [ "x$ID_TYPE" = "x" ] ; then
-        ROOTFS=(`lsblk --list --output MOUNTPOINT,TYPE,NAME --noheadings --paths | grep "^/ " | sed 's/ \+/\n/g'`)
-    else
-        ROOTFS=(`lsblk --list --output MOUNTPOINT,TYPE,NAME,$ID_TYPE --noheadings --paths | grep "^/ " | sed 's/ \+/\n/g'`)
-        ROOT_ID=${ROOTFS[3]}
-    fi
-    ROOT_TYPE=${ROOTFS[1]}
-    ROOT_PATH=${ROOTFS[2]}
-else
-    if [ "x$ID_TYPE" = "x" ] ; then
-        ROOTFS=(`lsblk --list --output TYPE,NAME --noheadings --paths $ROOTDEV | head -q -n 1 | sed 's/ \+/\n/g'`)
-    else
-        ROOTFS=(`lsblk --list --output TYPE,NAME,$ID_TYPE --noheadings --paths $ROOTDEV | head -q -n 1 | sed 's/ \+/\n/g'`)
-        ROOT_ID=${ROOTFS[2]}
-    fi
-    ROOT_TYPE=${ROOTFS[0]}
-    ROOT_PATH=${ROOTFS[1]}
+if [ "x$ROOT_DEV" = "x" ] ; then
+    ROOT_DEV=`findmnt --output SOURCE --noheadings /`
+    ate_debug "Root device not set. Using $ROOT_DEV as root device since it's mounted at /."
+fi
+
+ROOT_TYPE=`lsblk --nodeps --noheadings --output TYPE $ROOT_DEV`
+ate_debug "Root device has type $ROOT_TYPE."
+ROOT_PATH=`lsblk --nodeps --noheadings --paths --output NAME $ROOT_DEV`
+ate_debug "Root device is on $ROOT_PATH."
+if [ "x$ID_TYPE" != "x" ] ; then
+    ROOT_ID=`lsblk --nodeps --noheadings --output $ID_TYPE $ROOT_DEV`
+    ate_debug "Root device has ID $ROOT_ID."
 fi
 
 case $ROOT_TYPE in
     "part")
         if [ "x$ID_TYPE" = "x" ] ; then
-            echo "$OUTPREFIX Root is on $ROOT_PATH"
+            ate_print "Root is on $ROOT_PATH"
             ROOTOPT="root=$ROOT_PATH"
         else
-            echo "$OUTPREFIX Root is on $ID_TYPE=$ROOT_ID ($ROOT_PATH)"
+            ate_print "Root is on $ID_TYPE=$ROOT_ID ($ROOT_PATH)"
             ROOTOPT="root=$ID_TYPE=$ROOT_ID"
         fi
         ;;
     "crypt")
-        REAL_DEV=`cryptsetup status $ROOT_PATH 2>/dev/null | sed -n 's/^ \+device: \+\([^ ]\+\)/\1/p'`
-        if [ "x$REAL_DEV" = "x" ] ; then
-            echo $ERRPREFIX Error while fetching crypt data for $ROOT_PATH. Try using sudo!
-            exit 1
-        fi
+        REAL_DEV=`lsblk --inverse --list --noheadings --output NAME --paths $ROOT_PATH | sed -n 2p`
+
         if [ "x$ID_TYPE" = "x" ] ; then
-            echo "$OUTPREFIX Root is on $ROOT_PATH wich is encrypted on $REAL_DEV"
+            ate_print "Root is on $ROOT_PATH wich is encrypted on $REAL_DEV"
             ROOTOPT="root=$ROOT_PATH cryptdevice=$REAL_DEV:`basename $ROOT_PATH`"
         else
-            REAL_ID=`blkid --output value --match-tag $ID_TYPE $REAL_DEV`
-            echo "$OUTPREFIX Root is on $ROOT_PATH wich is encrypted on $ID_TYPE=$REAL_ID ($REAL_DEV)"
+            REAL_ID=`lsblk --nodeps --noheadings --output $ID_TYPE $REAL_DEV`
+            ate_print "Root is on $ROOT_PATH wich is encrypted on $ID_TYPE=$REAL_ID ($REAL_DEV)"
             ROOTOPT="root=$ROOT_PATH cryptdevice=$ID_TYPE=$REAL_ID:`basename $ROOT_PATH`"
         fi
         ;;
     *)
-        echo "$ERRPREFIX Root partition has unknown type $ROOT_TYPE!"
-        exit 1
+        ate_error "Root partition has unknown type $ROOT_TYPE!"
         ;;
 esac
 
 # Find ESP
 if [ "x$ESP" = "x" ] ; then
-    for DEV in `find /dev -name 'sd[a-z][0-9]'` ; do
-        if (udevadm info --query=property $DEV | grep -q 'ID_PART_ENTRY_TYPE=c12a7328-f81f-11d2-ba4b-00a0c93ec93b') ; then
-            ESP=$DEV
-            break
-        fi
-    done
-
+    ESP=`lsblk --list --paths --output NAME,PARTTYPE --noheadings | grep "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" | cut -d " " -f 1`
     if [ "x$ESP" = "x" ] ; then
-        echo "$ERRPREFIX EFI System Partition not found!"
-        exit 1
+        ate_error "EFI System Partition not found!"
     fi
 fi
 
 ESP_DISK=`echo $ESP | sed 's/[0-9]\+$//g'`
 ESP_PART=`echo $ESP | grep -o '[0-9]\+$'`
+ate_debug "ESP is on disk $ESP_DISK, partition $ESP_PART."
 
 # Find out where ESP is mounted
+# The sed thing is a hack to omit bind mounts on subdirs
 EFIROOT=`findmnt --source $ESP --noheadings --output TARGET,SOURCE | sed -n "s| \+$ESP$||p"`
 if [ "x$EFIROOT" = "x" ] ; then
-    echo "$ERRPREFIX EFI System Partition not (properly) mounted!"
+    ate_error "EFI System Partition ($ESP) not (properly) mounted!"
     exit 1
 fi
-echo "$OUTPREFIX ESP found on $ESP (mounted on $EFIROOT)."
+ate_print "ESP found on $ESP (mounted on $EFIROOT)."
 
 # Macro for creating boot entries
 entry() {
@@ -188,7 +216,7 @@ entry() {
     _KERNEL=$2
     shift; shift;
     _OPTIONS=$*
-    echo "$OUTPREFIX Adding entry..."
+    ate_print "Adding entry..."
     echo "  :::     Name   : $_NAME"
     echo "  :::     Kernel : $_KERNEL"
     echo "  :::     Options: $_OPTIONS"
@@ -198,7 +226,7 @@ entry() {
 }
 
 # Remove all boot entries starting with our name
-echo "$OUTPREFIX Removing old boot entries..."
+ate_print "Removing old boot entries..."
 if [ "$DRY_RUN" = "0" ] ; then
     efibootmgr | grep "$NAME" | sed 's/^Boot\([0-9A-F]*\).*/\1/g' | xargs -n 1 -I{} efibootmgr --quiet --bootnum {} --delete-bootnum
 fi
@@ -248,7 +276,7 @@ for KERNEL in $KERNELS ; do
 done
 
 # Set timeout
-echo "$OUTPREFIX Set timeout to $TIMEOUT seconds..."
+ate_print "Set timeout to $TIMEOUT seconds..."
 if [ "$DRY_RUN" = "0" ] ; then
     efibootmgr --quiet --timeout $TIMEOUT
 fi
