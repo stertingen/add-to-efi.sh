@@ -26,11 +26,7 @@
 set -e
 
 ate_print() {
-    echo " $(tput setaf 6)[EFI]$(tput sgr0) $*"
-}
-
-ate_warn() {
-    echo " $(tput setaf 3)[EFI]$(tput sgr0) $*"
+    echo " $(tput setaf 2)[EFI]$(tput sgr0) $*"
 }
 
 ate_error() {
@@ -40,7 +36,7 @@ ate_error() {
 
 ate_debug() {
     if [ "$VERBOSE" -gt "0" ] ; then
-        echo " $(tput setaf 2)[EFI]$(tput sgr0) $*"
+        echo " $(tput setaf 3)[EFI]$(tput sgr0) $*"
     fi
 }
 
@@ -48,11 +44,13 @@ ate_exec() {
     if [ "$VERBOSE" -gt "0" ] || [ "$DRY_RUN" -gt "0" ] ; then
         echo " $(tput setaf 5)[EFI]$(tput sgr0) $*"
     fi
-    eval "$*"
+    if [ "$DRY_RUN" = "0" ] ; then
+        eval "$*"
+    fi
 }
 
 print_help() {
-    echo "Usage: $0 [-r <partition>] [-e <partition>] [-p (UUID|PARTUUID|LABEL|PARTLABEL)] [-t <timeout>] [-k <kernel-param>] [-m <kernel-param>] [-d] [-h]"
+    echo "Usage: $0 [-r <partition>] [-e <partition>] [-p (UUID|PARTUUID|LABEL|PARTLABEL)] [-t <timeout>] [-k <kernel-param>] [-m <kernel-param>] [-d] [-v] [-h]"
     echo "-r <partition>     Set root partition."
     echo "-e <partition>     Set ESP partition."
     echo "-p <identifier>    Set identifier type, e.g. PARTUUID. Defaults to device name if unset."
@@ -220,16 +218,12 @@ entry() {
     echo "  :::     Name   : $_NAME"
     echo "  :::     Kernel : $_KERNEL"
     echo "  :::     Options: $_OPTIONS"
-    if [ "$DRY_RUN" = "0" ] ; then
-        echo "$_OPTIONS" | iconv -f ascii -t ucs2 | efibootmgr --quiet --create --disk $ESP_DISK --part $ESP_PART --loader "$_KERNEL" --label "$_NAME" --append-binary-args -
-    fi
+    ate_exec "echo \"$_OPTIONS\" | iconv -f ascii -t ucs2 | efibootmgr --quiet --create --disk $ESP_DISK --part $ESP_PART --loader \"$_KERNEL\" --label \"$_NAME\" --append-binary-args -"
 }
 
 # Remove all boot entries starting with our name
 ate_print "Removing old boot entries..."
-if [ "$DRY_RUN" = "0" ] ; then
-    efibootmgr | grep "$NAME" | sed 's/^Boot\([0-9A-F]*\).*/\1/g' | xargs -n 1 -I{} efibootmgr --quiet --bootnum {} --delete-bootnum
-fi
+ate_exec "efibootmgr | grep \"$NAME\" | sed 's/^Boot\([0-9A-F]*\).*/\1/g' | xargs -n 1 -I{} efibootmgr --quiet --bootnum {} --delete-bootnum"
 
 # Look for kernels on ESP
 KERNELS=`find $EFIROOT -name "vmlinu[xz]-*" | sort -r`
@@ -252,6 +246,7 @@ for KERNEL in $KERNELS ; do
 
     # Add Intel ucode
     if [ -f $KROOT/intel-ucode.img ] ; then
+        ate_debug "Found Intel Microcode!"
         UCODE="initrd=$EROOT/intel-ucode.img "
     fi
 
@@ -277,6 +272,4 @@ done
 
 # Set timeout
 ate_print "Set timeout to $TIMEOUT seconds..."
-if [ "$DRY_RUN" = "0" ] ; then
-    efibootmgr --quiet --timeout $TIMEOUT
-fi
+ate_exec "efibootmgr --quiet --timeout $TIMEOUT"
