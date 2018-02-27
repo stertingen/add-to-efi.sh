@@ -113,9 +113,9 @@ entry() {
     shift; shift;
     _OPTIONS=$*
     echo "$OUTPREFIX Adding entry..."
-    echo "  :::   Name   : $_NAME"
-    echo "  :::   Kernel : $_KERNEL"
-    echo "  :::   Options: $_OPTIONS"
+    echo "  :::     Name   : $_NAME"
+    echo "  :::     Kernel : $_KERNEL"
+    echo "  :::     Options: $_OPTIONS"
     echo "$_OPTIONS" | iconv -f ascii -t ucs2 | $EFIBOOTMGR --quiet --create --disk $ESP_DISK --part $ESP_PART --loader "$_KERNEL" --label "$_NAME" --append-binary-args -
 }
 
@@ -124,7 +124,7 @@ echo "$OUTPREFIX Removing old boot entries..."
 $EFIBOOTMGR | grep "$NAME" | sed 's/^Boot\([0-9A-F]*\).*/\1/g' | xargs -n 1 -I{} $EFIBOOTMGR --quiet --bootnum {} --delete-bootnum
 
 # Look for kernels on ESP
-KERNELS=`find $EFIROOT -name "vmlinu[xz]-*"`
+KERNELS=`find $EFIROOT -name "vmlinu[xz]-*" | sort -r`
 for KERNEL in $KERNELS ; do
     
     # Lookup path for initrds
