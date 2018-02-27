@@ -156,6 +156,13 @@ if [ "x$NAME" = "x" ] ; then
     if [ -f /etc/os-release ]; then
         source /etc/os-release
         ate_debug "Read name from /etc/os-release: $NAME"
+    elif (which lsb_release >/dev/null 2>&1); then
+        NAME=$(lsb_release --description --short)
+        ate_debug "Read name from 'lsb_release --description --short': $NAME"
+    elif [ -f /etc/lsb-release ]; then
+        source /etc/lsb-release
+        NAME=$DISTRIB_DESCRIPTION
+        ate_debug "Read name from /etc/lsb-release: $NAME"
     else
         NAME=$(uname -o)
         ate_debug "Read name from 'uname -o': $NAME"
@@ -276,16 +283,16 @@ for KERNEL in $KERNELS ; do
 
         # Add entry for minimal options, if set
         if [ "x$KPARAM_MIN" != "x" ] ; then
-            entry "$NAME with Kernel $KVER (minimal options)" "$EKERNEL" "$ROOTOPT $INITRD $KPARAM_MIN"
+            entry "$NAME ($KVER) (minimal options)" "$EKERNEL" "$ROOTOPT $INITRD $KPARAM_MIN"
         fi
-        entry "$NAME with Kernel $KVER (fallback initrd)" "$EKERNEL" "$ROOTOPT $UCODE$INITRD $KPARAM"
+        entry "$NAME ($KVER) (fallback initrd)" "$EKERNEL" "$ROOTOPT $UCODE$INITRD $KPARAM"
     fi
 
     # Add normal entry for kernel
     if [ -f $KROOT/initramfs-$KNAME.img ] ; then
         
         INITRD="initrd=$EROOT/initramfs-$KNAME.img"
-        entry "$NAME with Kernel $KVER" "$EKERNEL" "$ROOTOPT $UCODE$INITRD $KPARAM"
+        entry "$NAME ($KVER)" "$EKERNEL" "$ROOTOPT $UCODE$INITRD $KPARAM"
     fi
 done
 
