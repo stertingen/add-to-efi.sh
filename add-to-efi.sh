@@ -31,7 +31,7 @@ ERRPREFIX=" $(tput setaf 1)[EFI]$(tput sgr0) "
 
 # Default options
 TIMEOUT=3
-DRY_RUN='1'
+DRY_RUN='0'
 VERBOSE='0'
 
 # Option parsing
