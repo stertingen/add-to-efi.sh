@@ -25,41 +25,49 @@
 
 set -e
 
-if (which tput >/dev/null 2>&1) ; then
-    TPUT="tput"
+# I don't want do depend on tput, although it's common on most systems
+if (which tput >/dev/null 2>&1); then
+    _PRINT=" $(tput setaf 2)[EFI]$(tput sgr0)"
+    _ERROR=" $(tput setaf 1)[EFI]$(tput sgr0)"
+    _DEBUG=" $(tput setaf 3)[EFI]$(tput sgr0)"
+    _EXEC=" $(tput setaf 5)[EFI]$(tput sgr0)"
 else
-    TPUT="true"
+    _PRINT=" [EFI]"
+    _ERROR=" [EFI]"
+    _DEBUG=" [EFI]"
+    _EXEC=" [EFI]"
 fi
 
 ate_print() {
-    echo " $($TPUT setaf 2)[EFI]$($TPUT sgr0) $*"
+    echo $_PRINT $*
 }
 
 ate_error() {
-    echo " $($TPUT setaf 1)[EFI]$($TPUT sgr0) $*"
+    echo $_ERROR $*
     exit 1
 }
 
 ate_debug() {
-    if [ "$VERBOSE" -gt "0" ] ; then
-        echo " $($TPUT setaf 3)[EFI]$($TPUT sgr0) $*"
+    if [ "$VERBOSE" -gt "0" ]; then
+        echo $_DEBUG $*
     fi
 }
 
 ate_exec() {
-    if [ "$VERBOSE" -gt "0" ] || [ "$DRY_RUN" -gt "0" ] ; then
-        echo " $($TPUT setaf 5)[EFI]$($TPUT sgr0) $*"
+    if [ "$VERBOSE" -gt "0" ] || [ "$DRY_RUN" -gt "0" ]; then
+        echo $_EXEC $*
     fi
-    if [ "$DRY_RUN" = "0" ] && [ "x$DUMPTOFILE" = "x" ] ; then
+    if [ "$DRY_RUN" = "0" ] && [ "x$DUMP_TO_FILE" = "x" ]; then
         eval "$*"
     fi
-    if [ "x$DUMPTOFILE" != "x" ] && [ -w $DUMPTOFILE ] ; then
-        echo "$*" >> $DUMPTOFILE
+    if [ "x$DUMP_TO_FILE" != "x" ] && [ -w $DUMP_TO_FILE ]; then
+        echo "$*" >> $DUMP_TO_FILE
     fi
 }
 
 print_help() {
-    echo "Usage: $0 [-r <partition>] [-e <partition>] [-p (UUID|PARTUUID|LABEL|PARTLABEL)] [-t <timeout>] [-k <kernel-param>] [-m <kernel-param>] [-f <file-name>] [-d] [-v] [-h]"
+    echo "Usage: $0 [-r <partition>] [-e <partition>] [-p (UUID|PARTUUID|LABEL|PARTLABEL)]"
+    echo "       [-t <timeout>] [-k <kernel-param>] [-m <kernel-param>] [-f <file-name>] [-d] [-v] [-h]"
     echo "-r <partition>     Set root partition."
     echo "-e <partition>     Set ESP partition."
     echo "-p <identifier>    Set identifier type, e.g. PARTUUID. Defaults to device name if unset."
@@ -73,17 +81,30 @@ print_help() {
     echo "-h                 Display help."
 }
 
+# Macro for creating boot entries
+entry() {
+    _NAME=$1
+    _KERNEL=$2
+    shift; shift;
+    _OPTIONS=$*
+    ate_print "Adding entry..."
+    echo "  :::     Name   : $_NAME"
+    echo "  :::     Kernel : $_KERNEL"
+    echo "  :::     Options: $_OPTIONS"
+    ate_exec "echo \"$_OPTIONS\" | iconv -f ascii -t ucs2 | efibootmgr --quiet --create --disk $ESP_DISK --part $ESP_PART --loader \"$_KERNEL\" --label \"$_NAME\" --append-binary-args -"
+}
+
 # Default options
 TIMEOUT=3
 DRY_RUN='0'
 VERBOSE='0'
-DUMPTOFILE=''
+DUMP_TO_FILE=''
 
 # Option parsing
 while getopts "r:e:p:t:n:k:m:f:dvh" opt; do
     case $opt in
         r)
-            if [ -b $OPTARG ] ; then
+            if [ -b $OPTARG ]; then
                 ROOT_DEV=$OPTARG
                 ate_debug "Set root partition to $ROOT_DEV"
             else
@@ -91,7 +112,7 @@ while getopts "r:e:p:t:n:k:m:f:dvh" opt; do
             fi
             ;;
         e)
-            if [ -b $OPTARG ] ; then
+            if [ -b $OPTARG ]; then
                 ESP=$OPTARG
                 ate_debug "Set EFI partition to $ESP"
             else
@@ -99,7 +120,7 @@ while getopts "r:e:p:t:n:k:m:f:dvh" opt; do
             fi
             ;;
         p)
-            if (echo "UUID PARTUUID LABEL PARTLABEL" | grep -wq "$OPTARG") ; then
+            if (echo "UUID PARTUUID LABEL PARTLABEL" | grep -wq "$OPTARG"); then
                 ID_TYPE=$OPTARG
                 ate_debug "Using ID type $ID_TYPE"
             else
@@ -107,7 +128,7 @@ while getopts "r:e:p:t:n:k:m:f:dvh" opt; do
             fi
             ;;
         t)
-            if (echo $OPTARG | grep -q "[0-9]\+") ; then
+            if (echo $OPTARG | grep -q "[0-9]\+"); then
                 TIMEOUT=$OPTARG
                 ate_debug "Timeout set to $TIMEOUT"
             else
@@ -119,18 +140,18 @@ while getopts "r:e:p:t:n:k:m:f:dvh" opt; do
             ate_debug "Name set to $NAME"
             ;;
         k)
-            KPARAM=$OPTARG
-            ate_debug "Default kernel parameter: $KPARAM"
+            KERNEL_PARAM=$OPTARG
+            ate_debug "Default kernel parameter: $KERNEL_PARAM"
             ;;
         m)
-            KPARAM_MIN=$OPTARG
-            ate_debug "Kernel parameter for minimal boot: $KPARAM_MIN"
+            KERNEL_PARAM_MIN=$OPTARG
+            ate_debug "Kernel parameter for minimal boot: $KERNEL_PARAM_MIN"
             ;;
         f)
-            DUMPTOFILE=$OPTARG
+            DUMP_TO_FILE=$OPTARG
             ate_debug "Dumping commands to executable file"
-            echo "#!/bin/sh" > $DUMPTOFILE
-            chmod 755 $DUMPTOFILE
+            echo "#!/bin/sh" > $DUMP_TO_FILE
+            chmod 755 $DUMP_TO_FILE
             ;;
         d)
             DRY_RUN='1'
@@ -139,7 +160,7 @@ while getopts "r:e:p:t:n:k:m:f:dvh" opt; do
         v)
             VERBOSE='1'
             ate_debug "Verbose mode!"
-            ;;
+           ;;
         h)
             print_help
             exit 0
@@ -152,7 +173,7 @@ while getopts "r:e:p:t:n:k:m:f:dvh" opt; do
 done
 
 # Get name of OS, if unset
-if [ "x$NAME" = "x" ] ; then
+if [ "x$NAME" = "x" ]; then
     if [ -f /etc/os-release ]; then
         source /etc/os-release
         ate_debug "Read name from /etc/os-release: $NAME"
@@ -170,7 +191,7 @@ if [ "x$NAME" = "x" ] ; then
 fi
 
 # Find root file system
-if [ "x$ROOT_DEV" = "x" ] ; then
+if [ "x$ROOT_DEV" = "x" ]; then
     ROOT_DEV=`findmnt --output SOURCE --noheadings /`
     ate_debug "Root device not set. Using $ROOT_DEV as root device since it's mounted at /."
 fi
@@ -179,31 +200,31 @@ ROOT_TYPE=`lsblk --nodeps --noheadings --output TYPE $ROOT_DEV`
 ate_debug "Root device has type $ROOT_TYPE."
 ROOT_PATH=`lsblk --nodeps --noheadings --paths --output NAME $ROOT_DEV`
 ate_debug "Root device is on $ROOT_PATH."
-if [ "x$ID_TYPE" != "x" ] ; then
+if [ "x$ID_TYPE" != "x" ]; then
     ROOT_ID=`lsblk --nodeps --noheadings --output $ID_TYPE $ROOT_DEV`
     ate_debug "Root device has ID $ROOT_ID."
 fi
 
 case $ROOT_TYPE in
     "part")
-        if [ "x$ID_TYPE" = "x" ] ; then
+        if [ "x$ID_TYPE" = "x" ]; then
             ate_print "Root is on $ROOT_PATH"
-            ROOTOPT="root=$ROOT_PATH"
+            ROOT_OPT="root=$ROOT_PATH"
         else
             ate_print "Root is on $ID_TYPE=$ROOT_ID ($ROOT_PATH)"
-            ROOTOPT="root=$ID_TYPE=$ROOT_ID"
+            ROOT_OPT="root=$ID_TYPE=$ROOT_ID"
         fi
         ;;
     "crypt")
-        REAL_DEV=`lsblk --inverse --list --noheadings --output NAME --paths $ROOT_PATH | sed -n 2p`
+        PHYS_DEV=`lsblk --inverse --list --noheadings --output NAME --paths $ROOT_PATH | sed -n 2p`
 
-        if [ "x$ID_TYPE" = "x" ] ; then
-            ate_print "Root is on $ROOT_PATH wich is encrypted on $REAL_DEV"
-            ROOTOPT="root=$ROOT_PATH cryptdevice=$REAL_DEV:`basename $ROOT_PATH`"
+        if [ "x$ID_TYPE" = "x" ]; then
+            ate_print "Root is on $ROOT_PATH wich is encrypted on $PHYS_DEV"
+            ROOT_OPT="root=$ROOT_PATH cryptdevice=$PHYS_DEV:`basename $ROOT_PATH`"
         else
-            REAL_ID=`lsblk --nodeps --noheadings --output $ID_TYPE $REAL_DEV`
-            ate_print "Root is on $ROOT_PATH wich is encrypted on $ID_TYPE=$REAL_ID ($REAL_DEV)"
-            ROOTOPT="root=$ROOT_PATH cryptdevice=$ID_TYPE=$REAL_ID:`basename $ROOT_PATH`"
+            PHYS_ID=`lsblk --nodeps --noheadings --output $ID_TYPE $PHYS_DEV`
+            ate_print "Root is on $ROOT_PATH wich is encrypted on $ID_TYPE=$PHYS_ID ($PHYS_DEV)"
+            ROOT_OPT="root=$ROOT_PATH cryptdevice=$ID_TYPE=$PHYS_ID:`basename $ROOT_PATH`"
         fi
         ;;
     *)
@@ -212,9 +233,9 @@ case $ROOT_TYPE in
 esac
 
 # Find ESP
-if [ "x$ESP" = "x" ] ; then
+if [ "x$ESP" = "x" ]; then
     ESP=`lsblk --list --paths --output NAME,PARTTYPE --noheadings | grep "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" | cut -d " " -f 1`
-    if [ "x$ESP" = "x" ] ; then
+    if [ "x$ESP" = "x" ]; then
         ate_error "EFI System Partition not found!"
     fi
 fi
@@ -225,74 +246,63 @@ ate_debug "ESP is on disk $ESP_DISK, partition $ESP_PART."
 
 # Find out where ESP is mounted
 # The sed thing is a hack to omit bind mounts on subdirs
-EFIROOT=`findmnt --source $ESP --noheadings --output TARGET,SOURCE | sed -n "s| \+$ESP$||p"`
-if [ "x$EFIROOT" = "x" ] ; then
+# like /esp/EFI/arch on /boot
+EFI_ROOT=`findmnt --source $ESP --noheadings --output TARGET,SOURCE | sed -n "s| \+$ESP$||p"`
+if [ "x$EFI_ROOT" = "x" ]; then
     ate_error "EFI System Partition ($ESP) not (properly) mounted!"
     exit 1
 fi
-ate_print "ESP found on $ESP (mounted on $EFIROOT)."
-
-# Macro for creating boot entries
-entry() {
-    _NAME=$1
-    _KERNEL=$2
-    shift; shift;
-    _OPTIONS=$*
-    ate_print "Adding entry..."
-    echo "  :::     Name   : $_NAME"
-    echo "  :::     Kernel : $_KERNEL"
-    echo "  :::     Options: $_OPTIONS"
-    ate_exec "echo \"$_OPTIONS\" | iconv -f ascii -t ucs2 | efibootmgr --quiet --create --disk $ESP_DISK --part $ESP_PART --loader \"$_KERNEL\" --label \"$_NAME\" --append-binary-args -"
-}
+ate_print "ESP found on $ESP (mounted on $EFI_ROOT)."
 
 # Remove all boot entries starting with our name
 ate_print "Removing old boot entries..."
-for bootnum in `efibootmgr | grep "$NAME" | sed 's/^Boot\([0-9A-F]*\).*/\1/g'`; do
-    ate_exec "efibootmgr --quiet --bootnum $bootnum --delete-bootnum"
+for BOOTNUM in `efibootmgr | grep "$NAME" | sed 's/^Boot\([0-9A-F]*\).*/\1/g'`; do
+    ate_exec "efibootmgr --quiet --bootnum $BOOTNUM --delete-bootnum"
 done
 
 # Look for kernels on ESP
-KERNELS=`find $EFIROOT -name "vmlinu[xz]-*" | sort -r`
-for KERNEL in $KERNELS ; do
+KERNEL_PATHS=`find $EFI_ROOT -name "vmlinu[xz]-*" | sort -r`
+ate_debug "Found Kernels: $KERNEL_PATHS"
+for KERNEL_PATH in $KERNEL_PATHS; do
     
     # Lookup path for initrds
-    KROOT=`dirname $KERNEL`
+    KERNEL_DIR=`dirname $KERNEL_PATH`
     
     # initrd name depends on kernel name
-    KNAME=`basename $KERNEL | sed 's/vmlinu[xz]-//g'`
+    KERNEL_NAME=`basename $KERNEL_PATH | sed 's/vmlinu[xz]-//g'`
 
     # Add to entry name later
-    KVER=`file -b $KERNEL | sed 's/.*version \([^ ]*\).*/\1/g'`
+    KERNEL_VERSION=`file -b $KERNEL_PATH | sed 's/.*version \([^ ]*\).*/\1/g'`
     
     # Kernel path seen by EFI
-    EKERNEL=`echo $KERNEL | sed "s|^$EFIROOT||g"`
+    EFI_KERNEL_PATH=`echo $KERNEL_PATH | sed "s|^$EFI_ROOT||g"`
 
-    # ROOT for initrd files
-    EROOT=`echo $KROOT | sed "s|^$EFIROOT||g"`
+    # ROOT for initrd files seen by EFI
+    EFI_KERNEL_DIR=`echo $KERNEL_DIR | sed "s|^$EFI_ROOT||g"`
 
     # Add Intel ucode
-    if [ -f $KROOT/intel-ucode.img ] ; then
+    if [ -f $KERNEL_DIR/intel-ucode.img ]; then
         ate_debug "Found Intel Microcode!"
-        UCODE="initrd=$EROOT/intel-ucode.img "
+        UCODE="initrd=$EFI_KERNEL_DIR/intel-ucode.img "
     fi
 
     # Add entries for fallback initramfs
-    if [ -f $KROOT/initramfs-$KNAME-fallback.img ] ; then
+    INITRD_NAME="initramfs-$KERNEL_NAME-fallback.img"
+    if [ -f $KERNEL_DIR/$INITRD_NAME ]; then
+        INITRD="initrd=$EFI_KERNEL_DIR/$INITRD_NAME"
         
-        INITRD="initrd=$EROOT/initramfs-$KNAME-fallback.img"
-
-        # Add entry for minimal options, if set
-        if [ "x$KPARAM_MIN" != "x" ] ; then
-            entry "$NAME ($KVER) (minimal options)" "$EKERNEL" "$ROOTOPT $INITRD $KPARAM_MIN"
+        if [ "x$KERNEL_PARAM_MIN" != "x" ]; then
+            # Add entry for minimal options, if set
+            entry "$NAME ($KERNEL_VERSION) (minimal options)" "$EFI_KERNEL_PATH" "$ROOT_OPT $INITRD $KERNEL_PARAM_MIN"
         fi
-        entry "$NAME ($KVER) (fallback initrd)" "$EKERNEL" "$ROOTOPT $UCODE$INITRD $KPARAM"
+        entry "$NAME ($KERNEL_VERSION) (fallback initrd)" "$EFI_KERNEL_PATH" "$ROOT_OPT $UCODE$INITRD $KERNEL_PARAM"
     fi
 
     # Add normal entry for kernel
-    if [ -f $KROOT/initramfs-$KNAME.img ] ; then
-        
-        INITRD="initrd=$EROOT/initramfs-$KNAME.img"
-        entry "$NAME ($KVER)" "$EKERNEL" "$ROOTOPT $UCODE$INITRD $KPARAM"
+    INITRD_NAME="initramfs-$KERNEL_NAME.img"
+    if [ -f $KERNEL_DIR/$INITRD_NAME ]; then
+        INITRD="initrd=$EFI_KERNEL_DIR/$INITRD_NAME"
+        entry "$NAME ($KERNEL_VERSION)" "$EFI_KERNEL_PATH" "$ROOT_OPT $UCODE$INITRD $KERNEL_PARAM"
     fi
 done
 
