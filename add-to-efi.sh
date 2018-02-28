@@ -59,7 +59,7 @@ ate_exec() {
 }
 
 print_help() {
-    echo "Usage: $0 [-r <partition>] [-e <partition>] [-p (UUID|PARTUUID|LABEL|PARTLABEL)] [-t <timeout>] [-k <kernel-param>] [-m <kernel-param>] [-d] [-v] [-h]"
+    echo "Usage: $0 [-r <partition>] [-e <partition>] [-p (UUID|PARTUUID|LABEL|PARTLABEL)] [-t <timeout>] [-k <kernel-param>] [-m <kernel-param>] [-f <file-name>] [-d] [-v] [-h]"
     echo "-r <partition>     Set root partition."
     echo "-e <partition>     Set ESP partition."
     echo "-p <identifier>    Set identifier type, e.g. PARTUUID. Defaults to device name if unset."
