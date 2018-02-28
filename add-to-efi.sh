@@ -39,23 +39,23 @@ else
 fi
 
 ate_print() {
-    echo $_PRINT $*
+    echo "$_PRINT $*"
 }
 
 ate_error() {
-    echo $_ERROR $*
+    echo "$_ERROR $*"
     exit 1
 }
 
 ate_debug() {
     if [ "$VERBOSE" -gt "0" ]; then
-        echo $_DEBUG $*
+        echo "$_DEBUG $*"
     fi
 }
 
 ate_exec() {
     if [ "$VERBOSE" -gt "0" ] || [ "$DRY_RUN" -gt "0" ]; then
-        echo $_EXEC $*
+        echo "$_EXEC $*"
     fi
     if [ "$DRY_RUN" = "0" ] && [ "x$DUMP_TO_FILE" = "x" ]; then
         eval "$*"
