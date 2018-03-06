@@ -43,4 +43,4 @@ Other device-mapper-enabled options are unsupported, but might be added later.
 
 There is currently no way to specify kernel parameters for specific kernels.
 
-For every kernel named ``vmlinu{x,z}-xxx``, a initrd is considered inherent, if it is named ``initramfs-xxx.img`` or ``initramfs-xxx-fallback.img``. These naming conventions are common on Arch Linux, but support for other naming conventions are non-existent.
+For every kernel named ``vmlinu{x,z}-xxx``, an initrd is considered inherent, if it is named ``initramfs-xxx.img`` or ``initramfs-xxx-fallback.img``. These naming conventions are common on Arch Linux, but support for other naming conventions are non-existent.
