@@ -60,8 +60,8 @@ ate_exec() {
     if [ "$DRY_RUN" = "0" ] && [ "x$DUMP_TO_FILE" = "x" ]; then
         eval "$*"
     fi
-    if [ "x$DUMP_TO_FILE" != "x" ] && [ -w $DUMP_TO_FILE ]; then
-        echo "$*" >> $DUMP_TO_FILE
+    if [ "x$DUMP_TO_FILE" != "x" ] && [ -w "$DUMP_TO_FILE" ]; then
+        echo "$*" >> "$DUMP_TO_FILE"
     fi
 }
 
@@ -104,7 +104,7 @@ DUMP_TO_FILE=''
 while getopts "r:e:p:t:n:k:m:f:dvh" opt; do
     case $opt in
         r)
-            if [ -b $OPTARG ]; then
+            if [ -b "$OPTARG" ]; then
                 ROOT_DEV=$OPTARG
                 ate_debug "Set root partition to $ROOT_DEV"
             else
@@ -112,7 +112,7 @@ while getopts "r:e:p:t:n:k:m:f:dvh" opt; do
             fi
             ;;
         e)
-            if [ -b $OPTARG ]; then
+            if [ -b "$OPTARG" ]; then
                 ESP=$OPTARG
                 ate_debug "Set EFI partition to $ESP"
             else
@@ -128,7 +128,7 @@ while getopts "r:e:p:t:n:k:m:f:dvh" opt; do
             fi
             ;;
         t)
-            if (echo $OPTARG | grep -q "[0-9]\+"); then
+            if (echo "$OPTARG" | grep -q "[0-9]\+"); then
                 TIMEOUT=$OPTARG
                 ate_debug "Timeout set to $TIMEOUT"
             else
@@ -150,8 +150,8 @@ while getopts "r:e:p:t:n:k:m:f:dvh" opt; do
         f)
             DUMP_TO_FILE=$OPTARG
             ate_debug "Dumping commands to executable file"
-            echo "#!/bin/sh" > $DUMP_TO_FILE
-            chmod 755 $DUMP_TO_FILE
+            echo "#!/bin/sh" > "$DUMP_TO_FILE"
+            chmod 755 "$DUMP_TO_FILE"
             ;;
         d)
             DRY_RUN='1'
@@ -175,13 +175,13 @@ done
 # Get name of OS, if unset
 if [ "x$NAME" = "x" ]; then
     if [ -f /etc/os-release ]; then
-        source /etc/os-release
+        . /etc/os-release
         ate_debug "Read name from /etc/os-release: $NAME"
     elif (which lsb_release >/dev/null 2>&1); then
         NAME=$(lsb_release --description --short)
         ate_debug "Read name from 'lsb_release --description --short': $NAME"
     elif [ -f /etc/lsb-release ]; then
-        source /etc/lsb-release
+        . /etc/lsb-release
         NAME=$DISTRIB_DESCRIPTION
         ate_debug "Read name from /etc/lsb-release: $NAME"
     else
@@ -192,16 +192,16 @@ fi
 
 # Find root file system
 if [ "x$ROOT_DEV" = "x" ]; then
-    ROOT_DEV=`findmnt --output SOURCE --noheadings /`
+    ROOT_DEV=$(findmnt --output SOURCE --noheadings /)
     ate_debug "Root device not set. Using $ROOT_DEV as root device since it's mounted at /."
 fi
 
-ROOT_TYPE=`lsblk --nodeps --noheadings --output TYPE $ROOT_DEV`
+ROOT_TYPE=$(lsblk --nodeps --noheadings --output TYPE "$ROOT_DEV")
 ate_debug "Root device has type $ROOT_TYPE."
-ROOT_PATH=`lsblk --nodeps --noheadings --paths --output NAME $ROOT_DEV`
+ROOT_PATH=$(lsblk --nodeps --noheadings --paths --output NAME "$ROOT_DEV")
 ate_debug "Root device is on $ROOT_PATH."
 if [ "x$ID_TYPE" != "x" ]; then
-    ROOT_ID=`lsblk --nodeps --noheadings --output $ID_TYPE $ROOT_DEV`
+    ROOT_ID=$(lsblk --nodeps --noheadings --output "$ID_TYPE" "$ROOT_DEV")
     ate_debug "Root device has ID $ROOT_ID."
 fi
 
@@ -216,15 +216,15 @@ case $ROOT_TYPE in
         fi
         ;;
     "crypt")
-        PHYS_DEV=`lsblk --inverse --list --noheadings --output NAME --paths $ROOT_PATH | sed -n 2p`
+        PHYS_DEV=$(lsblk --inverse --list --noheadings --output NAME --paths "$ROOT_PATH" | sed -n 2p)
 
         if [ "x$ID_TYPE" = "x" ]; then
             ate_print "Root is on $ROOT_PATH wich is encrypted on $PHYS_DEV"
-            ROOT_OPT="root=$ROOT_PATH cryptdevice=$PHYS_DEV:`basename $ROOT_PATH`"
+            ROOT_OPT="root=$ROOT_PATH cryptdevice=$PHYS_DEV:$(basename "$ROOT_PATH")"
         else
-            PHYS_ID=`lsblk --nodeps --noheadings --output $ID_TYPE $PHYS_DEV`
+            PHYS_ID=$(lsblk --nodeps --noheadings --output "$ID_TYPE" "$PHYS_DEV")
             ate_print "Root is on $ROOT_PATH wich is encrypted on $ID_TYPE=$PHYS_ID ($PHYS_DEV)"
-            ROOT_OPT="root=$ROOT_PATH cryptdevice=$ID_TYPE=$PHYS_ID:`basename $ROOT_PATH`"
+            ROOT_OPT="root=$ROOT_PATH cryptdevice=$ID_TYPE=$PHYS_ID:$(basename "$ROOT_PATH")"
         fi
         ;;
     *)
@@ -234,20 +234,20 @@ esac
 
 # Find ESP
 if [ "x$ESP" = "x" ]; then
-    ESP=`lsblk --list --paths --output NAME,PARTTYPE --noheadings | grep "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" | cut -d " " -f 1`
+    ESP=$(lsblk --list --paths --output NAME,PARTTYPE --noheadings | grep "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" | cut -d " " -f 1)
     if [ "x$ESP" = "x" ]; then
         ate_error "EFI System Partition not found!"
     fi
 fi
 
-ESP_DISK=`echo $ESP | sed 's/[0-9]\+$//g'`
-ESP_PART=`echo $ESP | grep -o '[0-9]\+$'`
+ESP_DISK=$(echo "$ESP" | sed 's/[0-9]\+$//g')
+ESP_PART=$(echo "$ESP" | grep -o '[0-9]\+$')
 ate_debug "ESP is on disk $ESP_DISK, partition $ESP_PART."
 
 # Find out where ESP is mounted
 # The sed thing is a hack to omit bind mounts on subdirs
 # like /esp/EFI/arch on /boot
-EFI_ROOT=`findmnt --source $ESP --noheadings --output TARGET,SOURCE | sed -n "s| \+$ESP$||p"`
+EFI_ROOT=$(findmnt --source "$ESP" --noheadings --output TARGET,SOURCE | sed -n "s| \+$ESP$||p")
 if [ "x$EFI_ROOT" = "x" ]; then
     ate_error "EFI System Partition ($ESP) not (properly) mounted!"
     exit 1
@@ -256,39 +256,39 @@ ate_print "ESP found on $ESP (mounted on $EFI_ROOT)."
 
 # Remove all boot entries starting with our name
 ate_print "Removing old boot entries..."
-for BOOTNUM in `efibootmgr | grep "$NAME" | sed 's/^Boot\([0-9A-F]*\).*/\1/g'`; do
+for BOOTNUM in $(efibootmgr | grep "$NAME" | sed 's/^Boot\([0-9A-F]*\).*/\1/g'); do
     ate_exec "efibootmgr --quiet --bootnum $BOOTNUM --delete-bootnum"
 done
 
 # Look for kernels on ESP
-KERNEL_PATHS=`find $EFI_ROOT -name "vmlinu[xz]-*" | sort -r`
+KERNEL_PATHS=$(find "$EFI_ROOT" -name "vmlinu[xz]-*" | sort -r)
 ate_debug "Found Kernels: $KERNEL_PATHS"
 for KERNEL_PATH in $KERNEL_PATHS; do
     
     # Lookup path for initrds
-    KERNEL_DIR=`dirname $KERNEL_PATH`
+    KERNEL_DIR=$(dirname "$KERNEL_PATH")
     
     # initrd name depends on kernel name
-    KERNEL_NAME=`basename $KERNEL_PATH | sed 's/vmlinu[xz]-//g'`
+    KERNEL_NAME=$(basename "$KERNEL_PATH" | sed 's/vmlinu[xz]-//g')
 
     # Add to entry name later
-    KERNEL_VERSION=`file -b $KERNEL_PATH | sed 's/.*version \([^ ]*\).*/\1/g'`
+    KERNEL_VERSION=$(file -b "$KERNEL_PATH" | sed 's/.*version \([^ ]*\).*/\1/g')
     
     # Kernel path seen by EFI
-    EFI_KERNEL_PATH=`echo $KERNEL_PATH | sed "s|^$EFI_ROOT||g"`
+    EFI_KERNEL_PATH=$(echo "$KERNEL_PATH" | sed "s|^$EFI_ROOT||g")
 
     # ROOT for initrd files seen by EFI
-    EFI_KERNEL_DIR=`echo $KERNEL_DIR | sed "s|^$EFI_ROOT||g"`
+    EFI_KERNEL_DIR=$(echo "$KERNEL_DIR" | sed "s|^$EFI_ROOT||g")
 
     # Add Intel ucode
-    if [ -f $KERNEL_DIR/intel-ucode.img ]; then
+    if [ -f "$KERNEL_DIR/intel-ucode.img" ]; then
         ate_debug "Found Intel Microcode!"
         UCODE="initrd=$EFI_KERNEL_DIR/intel-ucode.img "
     fi
 
     # Add entries for fallback initramfs
     INITRD_NAME="initramfs-$KERNEL_NAME-fallback.img"
-    if [ -f $KERNEL_DIR/$INITRD_NAME ]; then
+    if [ -f "$KERNEL_DIR/$INITRD_NAME" ]; then
         INITRD="initrd=$EFI_KERNEL_DIR/$INITRD_NAME"
         
         if [ "x$KERNEL_PARAM_MIN" != "x" ]; then
@@ -300,7 +300,7 @@ for KERNEL_PATH in $KERNEL_PATHS; do
 
     # Add normal entry for kernel
     INITRD_NAME="initramfs-$KERNEL_NAME.img"
-    if [ -f $KERNEL_DIR/$INITRD_NAME ]; then
+    if [ -f "$KERNEL_DIR/$INITRD_NAME" ]; then
         INITRD="initrd=$EFI_KERNEL_DIR/$INITRD_NAME"
         entry "$NAME ($KERNEL_VERSION)" "$EFI_KERNEL_PATH" "$ROOT_OPT $UCODE$INITRD $KERNEL_PARAM"
     fi
