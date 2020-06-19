@@ -94,6 +94,11 @@ entry() {
     ate_exec "echo \"$_OPTIONS\" | iconv -f ascii -t ucs2 | efibootmgr --quiet --create --disk $ESP_DISK --part $ESP_PART --loader \"$_KERNEL\" --label \"$_NAME\" --append-binary-args -"
 }
 
+# Macro to convert a path using forward slashes into a path using backslashes
+backslash_path() {
+    echo "$*" | sed "s|/|\\\\|g"
+}
+
 # Default options
 TIMEOUT=3
 DRY_RUN='0'
@@ -283,13 +288,13 @@ for KERNEL_PATH in $KERNEL_PATHS; do
     # Add Intel ucode
     if [ -f "$KERNEL_DIR/intel-ucode.img" ]; then
         ate_debug "Found Intel Microcode!"
-        UCODE="initrd=$EFI_KERNEL_DIR/intel-ucode.img "
+        UCODE="initrd=$(backslash_path $EFI_KERNEL_DIR/intel-ucode.img) "
     fi
 
     # Add entries for fallback initramfs
     INITRD_NAME="initramfs-$KERNEL_NAME-fallback.img"
     if [ -f "$KERNEL_DIR/$INITRD_NAME" ]; then
-        INITRD="initrd=$EFI_KERNEL_DIR/$INITRD_NAME"
+        INITRD="initrd=$(backslash_path $EFI_KERNEL_DIR/$INITRD_NAME)"
         
         if [ "x$KERNEL_PARAM_MIN" != "x" ]; then
             # Add entry for minimal options, if set
@@ -301,7 +306,7 @@ for KERNEL_PATH in $KERNEL_PATHS; do
     # Add normal entry for kernel
     INITRD_NAME="initramfs-$KERNEL_NAME.img"
     if [ -f "$KERNEL_DIR/$INITRD_NAME" ]; then
-        INITRD="initrd=$EFI_KERNEL_DIR/$INITRD_NAME"
+        INITRD="initrd=$(backslash_path $EFI_KERNEL_DIR/$INITRD_NAME)"
         entry "$NAME ($KERNEL_VERSION)" "$EFI_KERNEL_PATH" "$ROOT_OPT $UCODE$INITRD $KERNEL_PARAM"
     fi
 done
