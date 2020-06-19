@@ -4,6 +4,7 @@ Operation = Install
 Operation = Upgrade
 Operation = Remove
 Target = boot/vmlinu[xz]-*
+Target = usr/lib/modules/*/vmlinu[xz]
 Target = boot/*.img
 Target = usr/lib/initcpio/*
 
