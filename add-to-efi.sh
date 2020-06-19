@@ -262,8 +262,8 @@ done
 
 # Look for kernels on ESP
 KERNEL_PATHS=$(find "$EFI_ROOT" -name "vmlinu[xz]-*" | sort -r)
-ate_debug "Found Kernels: $KERNEL_PATHS"
 for KERNEL_PATH in $KERNEL_PATHS; do
+    ate_debug "Looking for kernels in $KERNEL_PATH ..."
     
     # Lookup path for initrds
     KERNEL_DIR=$(dirname "$KERNEL_PATH")
