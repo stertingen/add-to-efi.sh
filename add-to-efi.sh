@@ -222,15 +222,23 @@ case $ROOT_TYPE in
         ;;
     "crypt")
         PHYS_DEV=$(lsblk --inverse --list --noheadings --output NAME --paths "$ROOT_PATH" | sed -n 2p)
+        ROOT_NAME=$(basename "$ROOT_PATH")
 
         if [ "x$ID_TYPE" = "x" ]; then
             ate_print "Root is on $ROOT_PATH wich is encrypted on $PHYS_DEV"
-            ROOT_OPT="root=$ROOT_PATH cryptdevice=$PHYS_DEV:$(basename "$ROOT_PATH")"
+            ROOT_OPT="root=$ROOT_PATH cryptdevice=$PHYS_DEV:$ROOT_NAME"
         else
             PHYS_ID=$(lsblk --nodeps --noheadings --output "$ID_TYPE" "$PHYS_DEV")
             ate_print "Root is on $ROOT_PATH wich is encrypted on $ID_TYPE=$PHYS_ID ($PHYS_DEV)"
-            ROOT_OPT="root=$ROOT_PATH cryptdevice=$ID_TYPE=$PHYS_ID:$(basename "$ROOT_PATH")"
+            ROOT_OPT="root=$ROOT_PATH cryptdevice=$ID_TYPE=$PHYS_ID:$ROOT_NAME"
         fi
+
+        if [ "$ID_TYPE" = "UUID" ]; then
+            ROOT_OPT="$ROOT_OPT rd.luks.name=$PHYS_ID=$ROOT_NAME"
+        else
+            ate_print "Root id type $ID_TYPE is not suitable for systemd initcpio."
+        fi
+
         ;;
     *)
         ate_error "Root partition has unknown type $ROOT_TYPE!"

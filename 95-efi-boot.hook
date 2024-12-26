@@ -14,4 +14,4 @@ Depends = efibootmgr
 Depends = util-linux
 Depends = glibc
 When = PostTransaction
-Exec = /usr/local/bin/add-to-efi.sh -k rw -m ro
+Exec = /usr/local/bin/add-to-efi.sh -p UUID -k rw -m ro
